@@ -1,0 +1,24 @@
+[package]
+name = "depweave-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "depweave"
+path = "src/main.rs"
+
+[dependencies]
+depweave-core = { path = "../core" }
+depweave-render = { path = "../render" }
+depweave-cli = { path = "../cli" }
+slint.workspace = true
+notify.workspace = true
+fuzzy-matcher.workspace = true
+clap.workspace = true
+log.workspace = true
+env_logger.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true

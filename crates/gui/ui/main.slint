@@ -1,0 +1,389 @@
+import { Button, LineEdit, ComboBox, CheckBox, Slider, ListView, Switch, Palette, ScrollView } from "std-widgets.slint";
+
+export struct Row {
+    // 0 header, 1 key/value, 2 link, 3 text, 4 chain, 5 muted note, 6 warning
+    kind: int,
+    a: string,
+    b: string,
+    link: string,
+    segs: [string],
+}
+
+export struct StatsInfo {
+    total: string,
+    explicit: string,
+    deps: string,
+    size: string,
+    orphans: string,
+    edges: string,
+}
+
+export struct LegendItem {
+    c: color,
+    t: string,
+}
+
+global Theme {
+    in-out property <bool> dark: true;
+    out property <color> bg: dark ? #16181d : #f4f5f7;
+    out property <color> panel: dark ? #1c1f26 : #ffffff;
+    out property <color> border: dark ? #2d323c : #d5d8de;
+    out property <color> text: dark ? #e8eaf0 : #181a20;
+    out property <color> muted: dark ? #8d95a6 : #6a7282;
+    out property <color> accent: dark ? #6cb2ff : #0b66d0;
+    out property <color> warn: dark ? #ffb454 : #b35c00;
+    out property <color> hover: dark ? #2a2f3a : #e9edf5;
+}
+
+component RowView inherits Rectangle {
+    in property <Row> data;
+    callback activate(string);
+    height: 22px;
+    if data.kind == 0: Text {
+        x: 8px;
+        width: parent.width - 16px;
+        text: data.a;
+        font-weight: 700;
+        font-size: 13px;
+        color: Theme.text;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+    if data.kind == 1: HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+        Text { text: data.a; color: Theme.muted; width: 92px; font-size: 12px; vertical-alignment: center; overflow: elide; }
+        Text { text: data.b; color: Theme.text; font-size: 12px; vertical-alignment: center; overflow: elide; }
+    }
+    if data.kind == 2: Rectangle {
+        background: ta.has-hover ? Theme.hover : transparent;
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            spacing: 8px;
+            Text { text: data.a; color: Theme.accent; font-size: 12px; vertical-alignment: center; overflow: elide; horizontal-stretch: 1; }
+            Text { text: data.b; color: Theme.muted; font-size: 11px; vertical-alignment: center; horizontal-alignment: right; overflow: elide; }
+        }
+        ta := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { if data.link != "" { root.activate(data.link); } }
+        }
+    }
+    if data.kind == 3: Text { x: 8px; width: parent.width - 16px; text: data.a; color: Theme.text; font-size: 12px; vertical-alignment: center; overflow: elide; }
+    if data.kind == 5: Text { x: 8px; width: parent.width - 16px; text: data.a; color: Theme.muted; font-size: 11px; vertical-alignment: center; overflow: elide; }
+    if data.kind == 6: Text { x: 8px; width: parent.width - 16px; text: data.a; color: Theme.warn; font-size: 12px; font-weight: 600; vertical-alignment: center; overflow: elide; }
+    if data.kind == 4: Flickable {
+        x: 4px;
+        width: parent.width - 8px;
+        content-width: chain.preferred-width;
+        interactive: true;
+        chain := HorizontalLayout {
+            spacing: 4px;
+            alignment: start;
+            for s[i] in data.segs: HorizontalLayout {
+                spacing: 4px;
+                if i > 0: Text { text: "→"; color: Theme.muted; font-size: 12px; vertical-alignment: center; }
+                Rectangle {
+                    background: cta.has-hover ? Theme.hover : transparent;
+                    border-radius: 3px;
+                    Text { text: s; color: i == data.segs.length - 1 ? Theme.text : Theme.accent; font-size: 12px; font-weight: i == data.segs.length - 1 ? 700 : 400; vertical-alignment: center; }
+                    cta := TouchArea { mouse-cursor: pointer; clicked => { root.activate(s); } }
+                }
+            }
+        }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "depweave — pacman dependency explorer";
+    preferred-width: 1500px;
+    preferred-height: 900px;
+    min-width: 1320px;
+    min-height: 600px;
+    background: Theme.bg;
+
+    // ---- state pushed from Rust ----
+    in property <image> graph-image;
+    in property <bool> loading: true;
+    in property <string> loading-text: "Reading pacman database…";
+    in property <string> status-text;
+    in property <string> hover-text;
+    in property <StatsInfo> stats;
+    in property <[Row]> list-rows;
+    in property <[Row]> detail-rows;
+    in property <[Row]> why-rows;
+    in property <[Row]> search-results;
+    in property <[LegendItem]> legend;
+    in property <string> detail-title;
+    in property <string> why-title;
+    in property <string> orphan-cmd;
+    in property <bool> why-more-visible;
+    in property <string> layout-note;
+
+    // ---- two-way controls ----
+    in-out property <bool> dark <=> Theme.dark;
+    in-out property <int> list-tab: 0;
+    in-out property <int> right-tab: 0;
+    in-out property <bool> focus-mode: false;
+    in-out property <int> hops: 2;
+    in-out property <int> dir-index: 0;
+    in-out property <int> color-index: 0;
+    in-out property <int> layout-index: 0;
+    in-out property <bool> size-scale: true;
+    in-out property <bool> show-optional: true;
+    in-out property <string> search-text;
+
+    // ---- callbacks to Rust ----
+    callback reload();
+    callback search-edited(string);
+    callback search-accepted();
+    callback select-package(string);
+    callback list-changed(int);
+    callback controls-changed();
+    callback focus-cleared();
+    callback fit();
+    callback why-more();
+    callback export(string);
+    callback graph-resized(float, float);
+    callback graph-down(float, float);
+    callback graph-up(float, float);
+    callback graph-move(float, float, bool);
+    callback graph-scroll(float, float, float);
+    callback graph-double(float, float);
+
+    changed dark => { Palette.color-scheme = root.dark ? ColorScheme.dark : ColorScheme.light; root.controls-changed(); }
+    init => { Palette.color-scheme = root.dark ? ColorScheme.dark : ColorScheme.light; }
+
+    VerticalLayout {
+        HorizontalLayout {
+            // ================= left sidebar =================
+            Rectangle {
+                width: 270px;
+                background: Theme.panel;
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { text: "depweave"; font-size: 18px; font-weight: 800; color: Theme.text; vertical-alignment: center; horizontal-stretch: 1; }
+                        Button { text: "Reload"; clicked => { root.reload(); } }
+                    }
+                    Switch { text: "Dark theme"; checked <=> root.dark; }
+                    LineEdit {
+                        placeholder-text: "Search packages (fuzzy)…";
+                        text <=> root.search-text;
+                        edited(t) => { root.search-edited(t); }
+                        accepted(t) => { root.search-accepted(); }
+                    }
+                    if root.search-results.length > 0: Rectangle {
+                        height: min(root.search-results.length, 8) * 22px + 4px;
+                        background: Theme.bg;
+                        border-radius: 4px;
+                        VerticalLayout {
+                            padding-top: 2px;
+                            for r in root.search-results: RowView { data: r; activate(n) => { root.select-package(n); } }
+                        }
+                    }
+                    // stats
+                    Rectangle {
+                        height: 112px;
+                        background: Theme.bg;
+                        border-radius: 4px;
+                        VerticalLayout {
+                            padding: 8px;
+                            spacing: 2px;
+                            Text { text: "Packages  " + root.stats.total; color: Theme.text; font-size: 12px; }
+                            Text { text: "Explicit " + root.stats.explicit + "  ·  deps " + root.stats.deps; color: Theme.text; font-size: 12px; }
+                            Text { text: "Installed size  " + root.stats.size; color: Theme.text; font-size: 12px; }
+                            Text { text: "Orphans  " + root.stats.orphans; color: Theme.warn; font-size: 12px; }
+                            Text { text: "Edges  " + root.stats.edges; color: Theme.muted; font-size: 11px; }
+                        }
+                    }
+                    ComboBox {
+                        model: ["Orphans", "Explicitly installed", "Foreign / AUR", "Largest packages", "Largest removal impact"];
+                        current-index <=> root.list-tab;
+                        selected(v) => { root.list-changed(self.current-index); }
+                    }
+                    ListView {
+                        vertical-stretch: 1;
+                        for r in root.list-rows: RowView { data: r; activate(n) => { root.select-package(n); } }
+                    }
+                }
+            }
+            Rectangle { width: 1px; background: Theme.border; }
+
+            // ================= centre =================
+            VerticalLayout {
+                horizontal-stretch: 1;
+                Rectangle {
+                    background: Theme.panel;
+                    height: 84px;
+                    VerticalLayout {
+                        padding: 8px;
+                        spacing: 6px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            Text { text: "Color"; color: Theme.muted; vertical-alignment: center; }
+                            ComboBox {
+                                width: 130px;
+                                model: ["Install reason", "Repository", "Size"];
+                                current-index <=> root.color-index;
+                                selected(v) => { root.controls-changed(); }
+                            }
+                            CheckBox { text: "Sizes"; checked <=> root.size-scale; toggled => { root.controls-changed(); } }
+                            CheckBox { text: "Optional"; checked <=> root.show-optional; toggled => { root.controls-changed(); } }
+                            Text { text: "Layout"; color: Theme.muted; vertical-alignment: center; }
+                            ComboBox {
+                                width: 140px;
+                                model: ["Force-directed", "Hierarchical"];
+                                current-index <=> root.layout-index;
+                                selected(v) => { root.controls-changed(); }
+                            }
+                            Button { text: "Fit"; clicked => { root.fit(); } }
+                        }
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+                            CheckBox { text: "Focus mode"; checked <=> root.focus-mode; toggled => { root.controls-changed(); } }
+                            Text { text: "Hops " + root.hops; color: Theme.muted; vertical-alignment: center; width: 52px; }
+                            Slider {
+                                width: 110px;
+                                minimum: 1;
+                                maximum: 5;
+                                value: root.hops;
+                                changed(v) => { root.hops = Math.round(v); root.controls-changed(); }
+                            }
+                            ComboBox {
+                                width: 140px;
+                                model: ["Dependencies", "Dependents", "Both"];
+                                current-index <=> root.dir-index;
+                                selected(v) => { root.controls-changed(); }
+                            }
+                            Button { text: "Clear focus"; clicked => { root.focus-cleared(); } }
+                        }
+                    }
+                }
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: Theme.dark ? #16181d : #f8f8fa;
+                    clip: true;
+                    changed width => { root.graph-resized(self.width / 1px, self.height / 1px); }
+                    changed height => { root.graph-resized(self.width / 1px, self.height / 1px); }
+                    init => { root.graph-resized(self.width / 1px, self.height / 1px); }
+                    Image {
+                        source: root.graph-image;
+                        width: parent.width;
+                        height: parent.height;
+                        image-fit: fill;
+                    }
+                    ta := TouchArea {
+                        pointer-event(e) => {
+                            if e.button == PointerEventButton.left {
+                                if e.kind == PointerEventKind.down { root.graph-down(self.mouse-x / 1px, self.mouse-y / 1px); }
+                                if e.kind == PointerEventKind.up { root.graph-up(self.mouse-x / 1px, self.mouse-y / 1px); }
+                            }
+                        }
+                        changed mouse-x => { root.graph-move(self.mouse-x / 1px, self.mouse-y / 1px, self.pressed); }
+                        changed mouse-y => { root.graph-move(self.mouse-x / 1px, self.mouse-y / 1px, self.pressed); }
+                        scroll-event(e) => {
+                            root.graph-scroll(self.mouse-x / 1px, self.mouse-y / 1px, e.delta-y / 1px);
+                            accept
+                        }
+                        double-clicked => { root.graph-double(self.mouse-x / 1px, self.mouse-y / 1px); }
+                    }
+                    // legend
+                    Rectangle {
+                        x: 10px;
+                        y: parent.height - self.height - 10px;
+                        width: lg.preferred-width + 16px;
+                        height: lg.preferred-height + 12px;
+                        background: Theme.panel;
+                        border-radius: 6px;
+                        opacity: 0.92;
+                        visible: root.legend.length > 0;
+                        lg := VerticalLayout {
+                            padding: 6px;
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            spacing: 3px;
+                            for l in root.legend: HorizontalLayout {
+                                spacing: 6px;
+                                Rectangle { width: 10px; height: 10px; y: 3px; border-radius: 5px; background: l.c; }
+                                Text { text: l.t; color: Theme.text; font-size: 11px; }
+                            }
+                        }
+                    }
+                    if root.hover-text != "": Rectangle {
+                        x: parent.width - self.width - 10px;
+                        y: 10px;
+                        width: ht.preferred-width + 20px;
+                        height: 28px;
+                        background: Theme.panel;
+                        border-radius: 6px;
+                        ht := Text { text: root.hover-text; color: Theme.text; font-size: 12px; }
+                    }
+                    if root.loading: Rectangle {
+                        background: #000000a0;
+                        Text { text: root.loading-text; color: white; font-size: 18px; horizontal-alignment: center; vertical-alignment: center; }
+                        TouchArea { }
+                    }
+                }
+                Rectangle {
+                    background: Theme.panel;
+                    height: 40px;
+                    HorizontalLayout {
+                        padding: 6px;
+                        padding-left: 10px;
+                        spacing: 6px;
+                        Text { text: root.status-text; color: Theme.muted; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                        Text { text: "Export"; color: Theme.muted; vertical-alignment: center; }
+                        Button { text: "PNG"; clicked => { root.export("png"); } }
+                        Button { text: "SVG"; clicked => { root.export("svg"); } }
+                        Button { text: "DOT"; clicked => { root.export("dot"); } }
+                        Button { text: "JSON"; clicked => { root.export("json"); } }
+                    }
+                }
+            }
+
+            Rectangle { width: 1px; background: Theme.border; }
+            // ================= right panel =================
+            Rectangle {
+                width: 340px;
+                background: Theme.panel;
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 8px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Button { text: "Details"; primary: root.right-tab == 0; clicked => { root.right-tab = 0; } }
+                        Button { text: "Why installed?"; primary: root.right-tab == 1; clicked => { root.right-tab = 1; } }
+                    }
+                    if root.right-tab == 0: VerticalLayout {
+                        spacing: 6px;
+                        Text { text: root.detail-title; font-size: 15px; font-weight: 700; color: Theme.text; overflow: elide; }
+                        ListView {
+                            vertical-stretch: 1;
+                            for r in root.detail-rows: RowView { data: r; activate(n) => { root.select-package(n); } }
+                        }
+                    }
+                    if root.right-tab == 1: VerticalLayout {
+                        spacing: 6px;
+                        Text { text: root.why-title; font-size: 15px; font-weight: 700; color: Theme.text; overflow: elide; }
+                        if root.orphan-cmd != "": HorizontalLayout {
+                            spacing: 6px;
+                            cmd := LineEdit { text: root.orphan-cmd; read-only: true; horizontal-stretch: 1; }
+                            Button { text: "Copy"; clicked => { cmd.select-all(); cmd.copy(); } }
+                        }
+                        ListView {
+                            vertical-stretch: 1;
+                            for r in root.why-rows: RowView { data: r; activate(n) => { root.select-package(n); } }
+                        }
+                        if root.why-more-visible: Button { text: "Show more chains"; clicked => { root.why-more(); } }
+                    }
+                }
+            }
+        }
+    }
+}
