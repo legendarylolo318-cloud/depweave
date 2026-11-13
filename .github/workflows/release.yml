@@ -1,0 +1,73 @@
+name: Release AppImage
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APPIMAGETOOL_VERSION: "1.9.1"
+  APPIMAGETOOL_SHA256: ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+  RUNTIME_VERSION: "20251108"
+  RUNTIME_SHA256: 2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+
+jobs:
+  appimage:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install toolchain and system libraries
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git rust github-cli \
+            fontconfig freetype2 libxkbcommon wayland libx11 libxcursor libxrandr libxi \
+            desktop-file-utils appstream
+      - uses: actions/checkout@v4
+      - name: Checks
+        run: |
+          cargo fmt --all -- --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace
+      - name: Fetch pinned appimagetool and runtime
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools" && cd "$RUNNER_TEMP/tools"
+          curl -fsSLo appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-x86_64.AppImage"
+          curl -fsSLo runtime-x86_64 \
+            "https://github.com/AppImage/type2-runtime/releases/download/${RUNTIME_VERSION}/runtime-x86_64"
+          echo "${APPIMAGETOOL_SHA256}  appimagetool" | sha256sum -c -
+          echo "${RUNTIME_SHA256}  runtime-x86_64" | sha256sum -c -
+          chmod +x appimagetool
+      - name: Build AppImage
+        run: |
+          APPIMAGETOOL="$RUNNER_TEMP/tools/appimagetool" \
+          RUNTIME_FILE="$RUNNER_TEMP/tools/runtime-x86_64" \
+            ./build-appimage.sh
+      - name: Smoke test
+        run: |
+          # no pacman db in the container beyond the build deps, but the CLI must run
+          APPIMAGE_EXTRACT_AND_RUN=1 dist/depweave-*-x86_64.AppImage why bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: depweave-appimage
+          path: dist/*
+      - name: Attach to GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "depweave ${TAG#v}" --notes "Automated build of ${TAG}."
+          fi
+          existing="$(gh release view "$TAG" --json assets -q '.assets[].name')"
+          for f in dist/*; do
+            if grep -qx "$(basename "$f")" <<<"$existing"; then
+              echo "$(basename "$f") already attached; keeping the published asset"
+            else
+              gh release upload "$TAG" "$f"
+            fi
+          done

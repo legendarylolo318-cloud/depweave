@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>depweave</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#232a3b"/>
+      <stop offset="1" stop-color="#12151c"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <!-- woven dependency edges -->
+  <g fill="none" stroke-linecap="round" stroke-width="9">
+    <path d="M128 56 C 70 96, 70 150, 76 200" stroke="#56a0e0"/>
+    <path d="M128 56 C 186 96, 186 150, 180 200" stroke="#56a0e0"/>
+    <path d="M76 200 C 110 160, 146 160, 180 200" stroke="#e69f00"/>
+    <path d="M128 56 C 118 110, 138 150, 128 204" stroke="#3dbb8c" stroke-dasharray="2 16"/>
+  </g>
+  <!-- nodes -->
+  <circle cx="128" cy="56" r="20" fill="#e69f00"/>
+  <circle cx="76" cy="200" r="15" fill="#56a0e0"/>
+  <circle cx="180" cy="200" r="15" fill="#56a0e0"/>
+  <circle cx="128" cy="140" r="11" fill="#3dbb8c"/>
+</svg>

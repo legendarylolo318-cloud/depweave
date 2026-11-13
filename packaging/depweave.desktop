@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=depweave
+GenericName=Pacman Dependency Explorer
+Comment=Explore and understand the pacman dependency graph (read-only)
+Exec=depweave
+Icon=depweave
+Terminal=false
+Categories=System;Monitor;
+Keywords=pacman;arch;dependencies;graph;packages;orphans;
+StartupNotify=true

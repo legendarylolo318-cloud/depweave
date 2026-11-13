@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install toolchain and system libraries
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git rust fontconfig freetype2 \
+            libxkbcommon wayland libx11 libxcursor libxrandr libxi mesa ttf-dejavu
+      - uses: actions/checkout@v4
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test --workspace
