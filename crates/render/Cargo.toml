@@ -1,0 +1,11 @@
+[package]
+name = "depweave-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tiny-skia.workspace = true
+rstar.workspace = true
+fontdue.workspace = true
+log.workspace = true
